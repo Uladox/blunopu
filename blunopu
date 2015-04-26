@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# Varibles
+SCRIPTPATH=`dirname "$BASH_SOURCE"`
+COMMARRAY=($*)
+FORGOTTENARGUMENT=1
+
+ignore_for=0
+if [ $# -eq 0 ]; then
+    echo "no arguments given, use help for help"
+    exit $FORGOTTENARGUMENT
+fi
+
+for arg_num in `seq 0 $(($#-1))`; do
+    if [ $ignore_for -eq 0 ]; then
+	case ${COMMARRAY[$arg_num]} in
+	    "version")
+		echo "Blunopu (It stands for nothing) v0.0.0.1"
+		echo "Copyright (C) 2015 Uladox"
+		echo "This is free software; see the source for copying conditions.  There is NO"
+		echo "warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE."
+		;;
+	    "mount-sys")
+		name_of_mountable_sys=${COMMARRAY[$arg_num + 1]}
+		if [ -z $name_of_mountable_sys ]; then
+		    echo $name_of_mountable_sys
+		    echo "no argument given for mount-sys"
+		    exit $FORGOTTENARGUMENT
+		fi
+		partition=${COMMARRAY[$arg_num + 2]}
+		if [ -z $partition ]; then
+		    echo "no second argument (partition) given for mount-sys"
+		    exit $FORGOTTENARGUMENT
+		fi
+
+		sys_path=$SCRIPTPATH/sys/$name_of_mountable_sys
+		mkdir -pv $sys_path
+		mount -v -t ext4 $partition $sys_path
+
+		ignore_for=2
+		;;
+	    "umount-sys")
+		name_of_umountable_sys=${COMMARRAY[$arg_num + 1]}
+		if [ -z $name_of_umountable_sys ]; then
+		    echo "no argument given for unmount-sys"
+		    exit $FORGOTTENARGUMENT
+		fi
+
+		sys_path=$SCRIPTPATH/sys/$name_of_umountable_sys
+		umount -v $sys_path
+
+		ignore_for=1
+		;;
+	    "setup-sys")
+		name_of_sys=${COMMARRAY[$arg_num + 1]}
+		sys_path=$SCRIPTPATH/sys/$name_of_sys
+
+		if ! mountpoint -q $sys_path; then
+		    echo "system $name_of_sys not mounted in setup-sys"
+		    exit 0
+		fi
+
+		if [ -z $name_of_sys ]; then
+		    echo "no argument given for setup-sys"
+		    exit $FORGOTTENARGUMENT
+		fi
+		mkfifo $sys_path/sys_in
+		mkfifo $sys_path/sys_out
+		ignore_for=1
+		;;
+	    "ls")
+		case ${COMMARRAY[$arg_num + 1]} in
+		    "mounted")
+			for file in $(find $SCRIPTPATH/sys/ -type d); do
+			    if mountpoint -q $file; then
+				echo ${file##/*/}
+			    fi
+			done
+
+			ignore_for=1
+			;;
+		esac
+		;;
+	    "listen")
+		name_of_sys=${COMMARRAY[$arg_num + 1]}
+		sys_path=$SCRIPTPATH/sys/$name_of_sys
+		if ! mountpoint -q $sys_path; then
+		    echo "system $name_of_sys not mounted in listen"
+		    exit 0
+		fi
+		while true; do
+		    cat $sys_path/sys_out
+		done
+		;;
+	    "speak")
+		name_of_sys=${COMMARRAY[$arg_num + 1]}
+		sys_path=$SCRIPTPATH/sys/$name_of_sys
+		if ! mountpoint -q $sys_path; then
+		    echo "system $name_of_sys not mounted in speak"
+		    exit 0
+		fi
+		ignore_for=1
+		green=$(tput setaf 2)
+		nocolor=$(tput sgr0)
+		going=true
+		while $going; do
+		    if [ -t 0 ]; then
+			echo -ne "[$green$(id -u -n)$nocolor] "
+		    fi
+		    read input
+		    if [ -z "$input" ]; then
+			going=false
+		    else
+			echo $input>$sys_path/sys_in &
+		    fi
+		done
+		;;
+	    "test")
+		echo "hello"
+		;;
+	    *)
+		echo "did not recognize argument:${COMMARRAY[$arg_num]}"
+		exit $FORGOTTENARGUMENT
+		;;
+	esac
+    else
+	ignore_for=$((ignore_for-1))
+    fi
+done
